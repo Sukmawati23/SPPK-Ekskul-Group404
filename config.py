@@ -1,5 +1,5 @@
 
-from config import ACADEMIC_CODES, ACTIVITY_CODES, SKILL_LIST
+#from config import ACADEMIC_CODES, ACTIVITY_CODES, SKILL_LIST
 # config.py (versi lengkap & konsisten)
 
 ACADEMIC_CODES = {
