@@ -2,11 +2,10 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-
 from config import ACADEMIC_CODES, ACTIVITY_CODES, SKILL_LIST
 from utils.data_processor import student_to_vector
 from models.kmeans_model import run_kmeans
-from utils.auth import register_user, authenticate_user
+from utils.auth import register_user, authenticate_user, reset_password
 from utils.storage import save_student_to_csv
 
 # ======================================================
@@ -21,12 +20,12 @@ def init_state():
         "cluster_result": None,
         "extracurricular_inputs": [
             {"activity": "", "contribution": 3, "achievement": 3}
-        ]
+        ],
+        "forgot_email": ""  # Untuk menyimpan email sementara di halaman lupa password
     }
     for k, v in defaults.items():
         if k not in st.session_state:
             st.session_state[k] = v
-
     for i in range(len(SKILL_LIST)):
         if f"skill_{i}" not in st.session_state:
             st.session_state[f"skill_{i}"] = False
@@ -48,11 +47,9 @@ def calculate_recommendation_scores(profile, cluster_id):
     majors = cluster_to_majors.get(cluster_id, [])
     if not majors:
         return majors, [0.0] * len(majors)
-
     minat = profile["minat"]
     ekskul = profile["ekskul"]
     skills = set(s.strip() for s in profile["skill"].split(",") if s.strip())
-
     scores = []
     for major in majors:
         score = 0.0
@@ -78,7 +75,6 @@ def calculate_recommendation_scores(profile, cluster_id):
             relevant = {"Leadership", "Negosiasi", "Kolaborasi", "Publik Speaking"}
             score += 0.4 * len(skills & relevant) / max(len(relevant), 1)
         scores.append(min(score, 1.0))
-
     sorted_pairs = sorted(zip(majors, scores), key=lambda x: x[1], reverse=True)
     if sorted_pairs:
         sorted_majors, sorted_scores = zip(*sorted_pairs)
@@ -86,15 +82,52 @@ def calculate_recommendation_scores(profile, cluster_id):
     return majors, scores
 
 # ======================================================
-# LOGIN & REGISTER
+# HALAMAN LUPA PASSWORD — DENGAN DESAIN RAPIH
 # ======================================================
-if not st.session_state.logged_in:
+if st.session_state.page == "forgot":
+    st.title("🔐 Lupa Password?")
+    st.caption("Masukkan email akun Anda untuk mengatur ulang password.")
+
+    with st.form("reset_form"):
+        email = st.text_input("Email", value=st.session_state.get("forgot_email", ""), placeholder="contoh@email.com")
+        new_pass = st.text_input("Password Baru", type="password", placeholder="Masukkan password baru")
+        confirm_pass = st.text_input("Konfirmasi Password Baru", type="password", placeholder="Ulangi password baru")
+        submit = st.form_submit_button("Reset Password", use_container_width=True)
+
+    if submit:
+        if email.strip() == "":
+            st.error("📧 Email wajib diisi!")
+        elif new_pass != confirm_pass:
+            st.error("❌ Password baru tidak cocok!")
+        elif "@" not in email or "." not in email:
+            st.error("⚠️ Format email tidak valid.")
+        else:
+            if reset_password(email, new_pass):
+                st.success("✅ Password berhasil diubah! Silakan login.")
+                st.session_state.forgot_email = ""
+                goto("login")
+                st.rerun()
+            else:
+                st.error("❌ Email tidak ditemukan. Pastikan Anda sudah mendaftar.")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("← Kembali ke Login", use_container_width=True):
+            goto("login")
+            st.rerun()
+
+# ======================================================
+# LOGIN & REGISTER — DENGAN DESAIN MODERN
+# ======================================================
+elif not st.session_state.logged_in:
     if st.session_state.page == "login":
-        st.title("🔐 Login")
-        with st.form("login_form"):
-            email = st.text_input("Email")
-            password = st.text_input("Password", type="password")
-            submit = st.form_submit_button("Login")
+        st.markdown("<h1 style='display: flex; align-items: center;'>🔐 Login</h1>", unsafe_allow_html=True)
+        
+        with st.form("login_form", clear_on_submit=False):
+            email = st.text_input("Email", placeholder="contoh@email.com")
+            password = st.text_input("Password", type="password", placeholder="Masukkan password Anda")
+            submit = st.form_submit_button("Login", use_container_width=True)
+
         if submit:
             if authenticate_user(email, password):
                 st.session_state.logged_in = True
@@ -102,30 +135,38 @@ if not st.session_state.logged_in:
                 goto("input")
                 st.rerun()
             else:
-                st.error("Email atau password salah!")
-        if st.button("Daftar akun baru"):
-            goto("register")
-            st.rerun()
+                st.error("❌ Email atau password salah!")
+
+        # Tombol Daftar & Lupa Password dalam satu baris
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("Daftar akun baru", use_container_width=True):
+                goto("register")
+                st.rerun()
+        with col2:
+            if st.button("Lupa Password?", use_container_width=True):
+                goto("forgot")
+                st.rerun()
 
     elif st.session_state.page == "register":
         st.title("📝 Daftar Akun Baru")
         with st.form("register_form"):
-            email = st.text_input("Email")
-            password = st.text_input("Password", type="password")
-            confirm = st.text_input("Konfirmasi Password", type="password")
-            submit = st.form_submit_button("Daftar")
+            email = st.text_input("Email", placeholder="contoh@email.com")
+            password = st.text_input("Password", type="password", placeholder="Buat password Anda")
+            confirm = st.text_input("Konfirmasi Password", type="password", placeholder="Ulangi password")
+            submit = st.form_submit_button("Daftar", use_container_width=True)
         if submit:
             if password != confirm:
-                st.error("Password tidak cocok!")
+                st.error("❌ Password tidak cocok!")
             elif register_user(email, password):
-                st.success("Akun berhasil dibuat, silakan login.")
+                st.success("✅ Akun berhasil dibuat, silakan login.")
                 goto("login")
                 st.rerun()
             else:
-                st.error("Email sudah terdaftar!")
+                st.error("❌ Email sudah terdaftar!")
 
 # ======================================================
-# SETELAH LOGIN
+# SETELAH LOGIN — TETAP SAMA
 # ======================================================
 else:
     st.sidebar.title(f"👤 {st.session_state.current_email}")
@@ -138,15 +179,12 @@ else:
     # ==================================================
     if st.session_state.page == "input":
         st.title("📋 Input Profil Siswa")
-
         name = st.text_input("Nama Lengkap")
         academic = st.selectbox("Minat Akademik", list(ACADEMIC_CODES.keys()))
-
         with st.expander("🛠️ Pilih Keterampilan"):
             cols = st.columns(2)
             for i, skill in enumerate(SKILL_LIST):
                 cols[i % 2].checkbox(skill, key=f"skill_{i}")
-
         st.subheader("🎯 Ekstrakurikuler yang Diikuti")
         valid_activities = []
         for i, ex in enumerate(st.session_state.extracurricular_inputs):
@@ -159,10 +197,8 @@ else:
             )
             ex["contribution"] = c2.slider("Kontribusi", 1, 5, ex["contribution"], key=f"cont_{i}")
             ex["achievement"] = c3.slider("Prestasi", 1, 5, ex["achievement"], key=f"ach_{i}")
-
             if ex["activity"]:
                 valid_activities.append(ex["activity"])
-
         st.markdown("### ➕ Kelola Ekstrakurikuler")
         col1, col2 = st.columns(2)
         if col1.button("Tambah", use_container_width=True):
@@ -179,7 +215,6 @@ else:
         else:
             st.info("Silakan isi minimal satu ekstrakurikuler untuk memilih ekskul utama.")
             main_act = None
-
         st.divider()
         if st.button("💾 Simpan & Proses", type="primary", use_container_width=True):
             valid_inputs = [e for e in st.session_state.extracurricular_inputs if e["activity"]]
@@ -215,7 +250,6 @@ else:
         if not profile:
             goto("input")
             st.rerun()
-
         with st.spinner("Memproses data..."):
             train_df = pd.read_csv("data/sample_data.csv")
             vectors = [student_to_vector(row) for _, row in train_df.iterrows()]
@@ -224,7 +258,6 @@ else:
             result_df, centers, sse = run_kmeans(df_vectors, k=3)
             cluster_id = int(result_df["ClusterID"].iloc[-1])
             centroid = centers[cluster_id] if centers.size > 0 else np.zeros(len(vectors[0]))
-
             st.session_state.cluster_result = {
                 "name": profile["name"],
                 "cluster_id": cluster_id,
@@ -232,7 +265,6 @@ else:
                 "profile_vector": np.array(student_to_vector(profile)),
                 "centroid": np.array(centroid)
             }
-
         st.success(f"✅ Kamu masuk ke Cluster **#{cluster_id}**")
         if st.button("➡️ Lihat Rekomendasi", type="primary"):
             goto("result")
@@ -245,20 +277,16 @@ else:
         res = st.session_state.cluster_result
         profile = st.session_state.student_profile
         st.title("🎓 Rekomendasi Jurusan")
-
         cluster_labels = {0: "Analytical", 1: "Creative", 2: "Leadership"}
         st.subheader(f"Halo, **{res['name']}** 👋")
         st.info(f"Kamu termasuk tipe **{cluster_labels[res['cluster_id']]}**.")
-
         # Hitung skor
         majors, scores = calculate_recommendation_scores(profile, res["cluster_id"])
-
         # 🔢 Ranking
         with st.container(border=True):
             st.markdown("### 🔢 Ranking Rekomendasi")
             for i, (m, s) in enumerate(zip(majors, scores), 1):
                 st.markdown(f"**{i}. {m}** — Skor: **{s:.2f}**")
-
         # 📊 Bar Chart
         if scores:
             st.markdown("### 📊 Skor Rekomendasi")
@@ -269,17 +297,14 @@ else:
             ax1.set_ylabel("Skor Kesesuaian")
             plt.xticks(rotation=45, ha="right")
             st.pyplot(fig1)
-
         # 📈 Radar Chart — Profil Kompetensi
         st.markdown("### 📈 Profil Kompetensi Anda")
         feature_names = ["Minat", "Ekskul"] + SKILL_LIST + ["Kontribusi", "Prestasi", "Jml Klub"]
         student_vals = res["profile_vector"]
         centroid_vals = res["centroid"]
-
         N = len(feature_names)
         angles = np.linspace(0, 2 * np.pi, N, endpoint=False).tolist()
         angles += angles[:1]
-
         fig2, ax2 = plt.subplots(figsize=(6, 6), subplot_kw=dict(polar=True))
         # Profil Anda
         vals_std = student_vals.tolist()
@@ -291,17 +316,14 @@ else:
         vals_ideal += vals_ideal[:1]
         ax2.plot(angles, vals_ideal, 'o--', linewidth=2, label='Rata-rata Cluster')
         ax2.fill(angles, vals_ideal, alpha=0.1)
-
         ax2.set_thetagrids(np.degrees(angles[:-1]), feature_names)
         ax2.legend(loc='upper right', bbox_to_anchor=(0.1, 0.1))
         ax2.set_title("Perbandingan Profil Kompetensi", pad=20)
         st.pyplot(fig2)
-
         # ℹ️ Detail Teknis
         with st.expander("ℹ️ Detail Clustering"):
             st.metric("Cluster ID", res["cluster_id"])
             st.metric("Nilai SSE", f"{res['sse']:.3f}")
-
         st.divider()
         if st.button("🔄 Isi Ulang Profil", use_container_width=True):
             goto("input")
