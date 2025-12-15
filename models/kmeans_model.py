@@ -6,32 +6,23 @@ from sklearn.preprocessing import StandardScaler
 import numpy as np
 
 def run_kmeans(df_features: pd.DataFrame, k: int = 3):
-    """
-    Menjalankan K-Means Clustering pada DataFrame fitur numerik.
-    
-    Parameters:
-    - df_features: DataFrame dengan semua fitur numerik (tanpa kolom ID/nama).
-    - k: Jumlah cluster.
-    
-    Returns:
-    - result_df: DataFrame input + kolom 'ClusterID'
-    - centroids: array dari centroid (k x n_features)
-    - sse: float, nilai inertia (SSE)
-    """
-    # Validasi: pastikan jumlah sampel >= k
     if len(df_features) < k:
-        raise ValueError(f"Jumlah data ({len(df_features)}) kurang dari jumlah cluster yang diminta ({k}).")
+        # Jika data kurang dari k, gunakan k = jumlah data
+        k = len(df_features)
+        if k == 0:
+            raise ValueError("Tidak ada data untuk dikelompokkan.")
+        elif k == 1:
+            # Jika hanya 1 data, beri cluster ID 0
+            result_df = df_features.copy()
+            result_df['ClusterID'] = 0
+            return result_df, np.array([]), 0.0
     
-    # Normalisasi
+    # Normalisasi & K-Means
     scaler = StandardScaler()
     scaled_data = scaler.fit_transform(df_features)
-    
-    # K-Means
     kmeans = KMeans(n_clusters=k, random_state=42, n_init='auto')
     labels = kmeans.fit_predict(scaled_data)
     
-    # Tambahkan label ke data asli
     result_df = df_features.copy()
     result_df['ClusterID'] = labels
-    
     return result_df, kmeans.cluster_centers_, kmeans.inertia_
