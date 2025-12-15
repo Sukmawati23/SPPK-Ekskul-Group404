@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-import os
 
 from config import ACADEMIC_CODES, ACTIVITY_CODES, SKILL_LIST
 from utils.data_processor import student_to_vector
@@ -8,9 +7,9 @@ from models.kmeans_model import run_kmeans
 from utils.auth import register_user, authenticate_user
 from utils.storage import save_student_to_csv
 
-# ==========================================================
-# SESSION STATE INIT
-# ==========================================================
+# ======================================================
+# INIT SESSION STATE
+# ======================================================
 def init_state():
     defaults = {
         "logged_in": False,
@@ -35,9 +34,9 @@ init_state()
 def goto(page):
     st.session_state.page = page
 
-# ==========================================================
-# LOGIN / REGISTER
-# ==========================================================
+# ======================================================
+# LOGIN & REGISTER
+# ======================================================
 if not st.session_state.logged_in:
 
     if st.session_state.page == "login":
@@ -71,117 +70,117 @@ if not st.session_state.logged_in:
             submit = st.form_submit_button("Daftar")
 
         if submit:
-            if not email or not password:
-                st.error("Email dan password wajib diisi!")
-            elif password != confirm:
+            if password != confirm:
                 st.error("Password tidak cocok!")
             elif register_user(email, password):
-                st.success("Akun berhasil dibuat! Silakan login.")
+                st.success("Akun berhasil dibuat, silakan login.")
                 goto("login")
                 st.rerun()
             else:
                 st.error("Email sudah terdaftar!")
 
-        if st.button("Kembali ke Login"):
-            goto("login")
-            st.rerun()
-
-# ==========================================================
+# ======================================================
 # SETELAH LOGIN
-# ==========================================================
+# ======================================================
 else:
     st.sidebar.title(f"👤 {st.session_state.current_email}")
     if st.sidebar.button("Logout"):
         st.session_state.clear()
         st.rerun()
 
-    # ======================================================
-    # INPUT PROFIL
-    # ======================================================
+    # ==================================================
+    # INPUT PROFIL SISWA
+    # ==================================================
     if st.session_state.page == "input":
-        st.title("Input Profil Siswa")
+        st.title("📋 Input Profil Siswa")
 
-        with st.form("profil_form"):
-            name = st.text_input("Nama Lengkap")
-            academic = st.selectbox("Minat Akademik", list(ACADEMIC_CODES.keys()))
+        # Nama dan Minat Akademik
+        name = st.text_input("Nama Lengkap", value=st.session_state.get("temp_name", ""))
+        academic = st.selectbox("Minat Akademik", list(ACADEMIC_CODES.keys()))
 
-            # ===== KETERAMPILAN =====
-            st.subheader("Daftar Keterampilan")
-            cols = st.columns(2)
-            for i, skill in enumerate(SKILL_LIST):
-                cols[i % 2].checkbox(skill, key=f"skill_{i}")
+        # Daftar Keterampilan
+        st.subheader("Daftar Keterampilan")
+        cols = st.columns(2)
+        for i, skill in enumerate(SKILL_LIST):
+            cols[i % 2].checkbox(skill, key=f"skill_{i}")
 
-            # ===== EKSTRAKURIKULER =====
-            st.subheader("Ekstrakurikuler yang Diikuti")
-            for i, ex in enumerate(st.session_state.extracurricular_inputs):
-                cols = st.columns([3, 2, 2])
-                ex["activity"] = cols[0].selectbox(
-                    "", [""] + list(ACTIVITY_CODES.keys()),
-                    key=f"act_{i}", label_visibility="collapsed"
-                )
-                ex["contribution"] = cols[1].slider(
-                    "", 1, 5, ex["contribution"],
-                    key=f"cont_{i}", label_visibility="collapsed"
-                )
-                ex["achievement"] = cols[2].slider(
-                    "", 1, 5, ex["achievement"],
-                    key=f"ach_{i}", label_visibility="collapsed"
-                )
-
-            st.subheader("Ekstrakurikuler Utama")
-            main_act = st.selectbox(
-                "Pilih Ekstrakurikuler Utama",
-                list(ACTIVITY_CODES.keys())
+        # Ekstrakurikuler yang Diikuti
+        st.subheader("Ekstrakurikuler yang Diikuti")
+        for i, ex in enumerate(st.session_state.extracurricular_inputs):
+            c1, c2, c3 = st.columns([3, 2, 2])
+            ex["activity"] = c1.selectbox(
+                "Ekskul",
+                [""] + list(ACTIVITY_CODES.keys()),
+                key=f"act_{i}",
+                index=0 if not ex["activity"] else list(ACTIVITY_CODES.keys()).index(ex["activity"]) + 1
+            )
+            ex["contribution"] = c2.slider(
+                "Kontribusi", 1, 5, ex["contribution"],
+                key=f"cont_{i}"
+            )
+            ex["achievement"] = c3.slider(
+                "Prestasi", 1, 5, ex["achievement"],
+                key=f"ach_{i}"
             )
 
-            submitted = st.form_submit_button("Simpan & Proses")
-
-        # ➕ Tambah ekskul (DI LUAR FORM)
-        if st.button("➕ Tambah Ekstrakurikuler"):
+        # Tombol Kelola Ekstrakurikuler (DI LUAR FORM → AMAN!)
+        st.markdown("### Kelola Ekstrakurikuler")
+        col1, col2 = st.columns(2)
+        if col1.button("➕ Tambah Ekstrakurikuler Yang Diikuti"):
             st.session_state.extracurricular_inputs.append(
                 {"activity": "", "contribution": 3, "achievement": 3}
             )
             st.rerun()
+        if col2.button("❌ Hapus Ekskul Terakhir Yang Diikuti") and len(st.session_state.extracurricular_inputs) > 1:
+            st.session_state.extracurricular_inputs.pop()
+            st.rerun()
 
-        if submitted:
+        # Ekstrakurikuler Utama
+        st.subheader("Ekstrakurikuler Utama")
+        main_act = st.selectbox("Pilih Ekskul Utama", list(ACTIVITY_CODES.keys()))
+
+        # Tombol Submit (BUKAN di dalam st.form!)
+        if st.button("Simpan & Proses"):
+            # Validasi
             valid = [e for e in st.session_state.extracurricular_inputs if e["activity"]]
 
             if not name.strip():
                 st.error("Nama wajib diisi!")
             elif not valid:
-                st.error("Harap tambahkan minimal satu ekstrakurikuler yang valid!")
+                st.error("Minimal satu ekstrakurikuler!")
             else:
-                selected_skills = [
+                # Ambil keterampilan yang diceklis
+                skills = [
                     SKILL_LIST[i]
                     for i in range(len(SKILL_LIST))
                     if st.session_state[f"skill_{i}"]
                 ]
 
-                st.session_state.student_profile = {
+                # Simpan profil
+                profile = {
                     "email": st.session_state.current_email,
                     "name": name,
                     "minat": academic,
                     "ekskul": main_act,
-                    "skill": ", ".join(selected_skills),
+                    "skill": ", ".join(skills),
                     "club_count": len(valid),
                     "contribution": sum(e["contribution"] for e in valid) / len(valid),
                     "achievement": sum(e["achievement"] for e in valid) / len(valid)
                 }
 
-                save_student_to_csv(st.session_state.student_profile)
-
+                save_student_to_csv(profile)
+                st.session_state.student_profile = profile
                 goto("process")
                 st.rerun()
 
-    # ======================================================
+    # ==================================================
     # PROSES CLUSTERING
-    # ======================================================
+    # ==================================================
     elif st.session_state.page == "process":
-        st.title("⚙️ Proses Pengelompokan (K-Means)")
+        st.title("⚙️ Proses Clustering (K-Means)")
 
-        prof = st.session_state.student_profile
-        if not prof:
-            st.warning("Tidak ada data siswa.")
+        profile = st.session_state.student_profile
+        if not profile:
             goto("input")
             st.rerun()
 
@@ -191,49 +190,52 @@ else:
         for _, row in train_df.iterrows():
             vectors.append(student_to_vector(row))
 
-        vectors.append(student_to_vector(prof))
-        df = pd.DataFrame(vectors)
+        vectors.append(student_to_vector(profile))
+        df_vectors = pd.DataFrame(vectors)
 
-        result_df, _, sse = run_kmeans(df, k=3)
-        cid = int(result_df["ClusterID"].iloc[-1])
+        result_df, _, sse = run_kmeans(df_vectors, k=3)
+        cluster_id = int(result_df["ClusterID"].iloc[-1])
 
         st.session_state.cluster_result = {
-            "name": prof["name"],
-            "cluster_id": cid,
+            "name": profile["name"],
+            "cluster_id": cluster_id,
             "sse": sse
         }
 
-        st.success(f"✅ Berhasil! Masuk ke **Cluster #{cid}**")
+        st.success(f"✅ Kamu masuk ke Cluster #{cluster_id}")
+
         if st.button("Lihat Rekomendasi"):
             goto("result")
             st.rerun()
 
-    # ======================================================
-    # HASIL
-    # ======================================================
+    # ==================================================
+    # HASIL REKOMENDASI
+    # ==================================================
     elif st.session_state.page == "result":
         res = st.session_state.cluster_result
-        st.title("🎓 Rekomendasi Jurusan/Karier")
+        st.title("🎓 Rekomendasi Jurusan")
 
         cluster_labels = {
             0: "Analytical",
             1: "Creative",
             2: "Leadership"
         }
-        majors = {
+
+        recommendations = {
             0: ["Ilmu Komputer", "Matematika", "Statistika"],
             1: ["DKV", "Sastra", "Film"],
             2: ["Manajemen", "Komunikasi", "Hubungan Internasional"]
         }
 
-        st.subheader(f"Selamat, **{res['name']}**!")
-        st.write(f"Kamu termasuk dalam kelompok **{cluster_labels[res['cluster_id']]}**")
+        st.subheader(f"Halo, {res['name']} 👋")
+        st.write(f"Kamu termasuk tipe **{cluster_labels[res['cluster_id']]}**")
 
-        for m in majors[res["cluster_id"]]:
-            st.markdown(f"🔹 {m}")
+        st.markdown("### Rekomendasi Jurusan:")
+        for jurusan in recommendations[res["cluster_id"]]:
+            st.markdown(f"• {jurusan}")
 
-        st.metric("SSE", f"{res['sse']:.3f}")
+        st.metric("Nilai SSE", f"{res['sse']:.3f}")
 
-        if st.button("Coba Lagi"):
+        if st.button("Isi Ulang Profil"):
             goto("input")
             st.rerun()
