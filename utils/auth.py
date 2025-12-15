@@ -34,3 +34,12 @@ def authenticate_user(email: str, password: str) -> bool:
     if email not in users:
         return False
     return users[email] == hash_password(password)
+
+def reset_password(email: str, new_password: str) -> bool:
+    """Reset password untuk email yang sudah terdaftar."""
+    users = load_users()
+    if email not in users:
+        return False
+    users[email] = hash_password(new_password)
+    save_users(users)
+    return True
