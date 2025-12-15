@@ -4,7 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from config import ACADEMIC_CODES, ACTIVITY_CODES, SKILL_LIST
-from utils.data_processor import student_to_vector, one_hot_encode_skills
+from utils.data_processor import student_to_vector
 from models.kmeans_model import run_kmeans
 from utils.auth import register_user, authenticate_user
 from utils.storage import save_student_to_csv
@@ -134,10 +134,11 @@ else:
         st.rerun()
 
     # ==================================================
-    # INPUT PROFIL
+    # INPUT PROFIL SISWA
     # ==================================================
     if st.session_state.page == "input":
         st.title("📋 Input Profil Siswa")
+
         name = st.text_input("Nama Lengkap")
         academic = st.selectbox("Minat Akademik", list(ACADEMIC_CODES.keys()))
 
@@ -147,6 +148,7 @@ else:
                 cols[i % 2].checkbox(skill, key=f"skill_{i}")
 
         st.subheader("🎯 Ekstrakurikuler yang Diikuti")
+        valid_activities = []
         for i, ex in enumerate(st.session_state.extracurricular_inputs):
             c1, c2, c3 = st.columns([3, 2, 2])
             ex["activity"] = c1.selectbox(
@@ -158,6 +160,9 @@ else:
             ex["contribution"] = c2.slider("Kontribusi", 1, 5, ex["contribution"], key=f"cont_{i}")
             ex["achievement"] = c3.slider("Prestasi", 1, 5, ex["achievement"], key=f"ach_{i}")
 
+            if ex["activity"]:
+                valid_activities.append(ex["activity"])
+
         st.markdown("### ➕ Kelola Ekstrakurikuler")
         col1, col2 = st.columns(2)
         if col1.button("Tambah", use_container_width=True):
@@ -167,16 +172,23 @@ else:
             st.session_state.extracurricular_inputs.pop()
             st.rerun()
 
+        # 🔒 EKSKUL UTAMA: HANYA DARI YANG DIIKUTI
         st.subheader("🏆 Ekstrakurikuler Utama")
-        main_act = st.selectbox("Pilih Ekskul Utama", list(ACTIVITY_CODES.keys()))
+        if valid_activities:
+            main_act = st.selectbox("Pilih Ekskul Utama", options=valid_activities, index=0)
+        else:
+            st.info("Silakan isi minimal satu ekstrakurikuler untuk memilih ekskul utama.")
+            main_act = None
 
         st.divider()
         if st.button("💾 Simpan & Proses", type="primary", use_container_width=True):
-            valid = [e for e in st.session_state.extracurricular_inputs if e["activity"]]
+            valid_inputs = [e for e in st.session_state.extracurricular_inputs if e["activity"]]
             if not name.strip():
                 st.error("Nama wajib diisi!")
-            elif not valid:
+            elif not valid_inputs:
                 st.error("Minimal satu ekstrakurikuler harus diisi!")
+            elif not main_act:
+                st.error("Ekskul utama wajib dipilih dari daftar yang diikuti!")
             else:
                 skills = [SKILL_LIST[i] for i in range(len(SKILL_LIST)) if st.session_state[f"skill_{i}"]]
                 profile = {
@@ -185,9 +197,9 @@ else:
                     "minat": academic,
                     "ekskul": main_act,
                     "skill": ", ".join(skills),
-                    "club_count": len(valid),
-                    "contribution": sum(e["contribution"] for e in valid) / len(valid),
-                    "achievement": sum(e["achievement"] for e in valid) / len(valid)
+                    "club_count": len(valid_inputs),
+                    "contribution": sum(e["contribution"] for e in valid_inputs) / len(valid_inputs),
+                    "achievement": sum(e["achievement"] for e in valid_inputs) / len(valid_inputs)
                 }
                 save_student_to_csv(profile)
                 st.session_state.student_profile = profile
@@ -227,7 +239,7 @@ else:
             st.rerun()
 
     # ==================================================
-    # HASIL REKOMENDASI — DENGAN RADAR CHART
+    # HASIL REKOMENDASI — DENGAN SEMUA VISUALISASI
     # ==================================================
     elif st.session_state.page == "result":
         res = st.session_state.cluster_result
@@ -241,13 +253,13 @@ else:
         # Hitung skor
         majors, scores = calculate_recommendation_scores(profile, res["cluster_id"])
 
-        # Card: Ranking
+        # 🔢 Ranking
         with st.container(border=True):
             st.markdown("### 🔢 Ranking Rekomendasi")
             for i, (m, s) in enumerate(zip(majors, scores), 1):
                 st.markdown(f"**{i}. {m}** — Skor: **{s:.2f}**")
 
-        # Grafik Bar
+        # 📊 Bar Chart
         if scores:
             st.markdown("### 📊 Skor Rekomendasi")
             fig1, ax1 = plt.subplots(figsize=(6, 4))
@@ -258,26 +270,23 @@ else:
             plt.xticks(rotation=45, ha="right")
             st.pyplot(fig1)
 
-        # Radar Chart: Profil Kompetensi
+        # 📈 Radar Chart — Profil Kompetensi
         st.markdown("### 📈 Profil Kompetensi Anda")
         feature_names = ["Minat", "Ekskul"] + SKILL_LIST + ["Kontribusi", "Prestasi", "Jml Klub"]
         student_vals = res["profile_vector"]
         centroid_vals = res["centroid"]
-
-        # Normalisasi ke [0,1] untuk visualisasi (opsional)
-        # Tidak perlu jika sudah dalam skala yang masuk akal
 
         N = len(feature_names)
         angles = np.linspace(0, 2 * np.pi, N, endpoint=False).tolist()
         angles += angles[:1]
 
         fig2, ax2 = plt.subplots(figsize=(6, 6), subplot_kw=dict(polar=True))
-        # Siswa
+        # Profil Anda
         vals_std = student_vals.tolist()
         vals_std += vals_std[:1]
         ax2.plot(angles, vals_std, 'o-', linewidth=2, label='Anda')
         ax2.fill(angles, vals_std, alpha=0.25)
-        # Cluster ideal
+        # Rata-rata Cluster
         vals_ideal = centroid_vals.tolist()
         vals_ideal += vals_ideal[:1]
         ax2.plot(angles, vals_ideal, 'o--', linewidth=2, label='Rata-rata Cluster')
@@ -288,7 +297,7 @@ else:
         ax2.set_title("Perbandingan Profil Kompetensi", pad=20)
         st.pyplot(fig2)
 
-        # Detail teknis
+        # ℹ️ Detail Teknis
         with st.expander("ℹ️ Detail Clustering"):
             st.metric("Cluster ID", res["cluster_id"])
             st.metric("Nilai SSE", f"{res['sse']:.3f}")
